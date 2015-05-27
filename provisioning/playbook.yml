@@ -1,0 +1,88 @@
+---
+- hosts: all
+  sudo: yes
+  sudo_user: root
+  vars: 
+    oracle_packages:
+      - oracle-java8-installer
+      - oracle-java8-set-default
+    oracle_installer_key: oracle-java8-installer
+    oracle_license_key: accepted-oracle-license-v1-1
+    scala_version: "2.11.6"
+    scala_version_name: "scala-{{scala_version}}"
+    scala_archive_file: "{{scala_version_name}}.tgz"
+    scala_download_url: "http://www.scala-lang.org/files/archive/{{scala_archive_file}}"
+    scala_lib_path: "/usr/share/scala"
+    scala_lib_path_target: "{{scala_lib_path}}/{{scala_version_name}}"
+    scala_link_target: "/usr/bin"
+  tasks: 
+    - name: SYSTEM | Update apt cache
+      apt: update_cache=yes
+
+    - name: Git | Ensure git is at the latest version
+      apt: pkg=git state=latest
+
+    - name: Unzip | Ensure Unzip is installed and latest version
+      apt: pkg=unzip state=latest
+
+    - name: Java | Setup Oracle Java Repository
+      apt_repository: repo="ppa:webupd8team/java" update_cache=yes
+      when: ansible_distribution in [ 'Ubuntu' ]
+
+    - name: Java | Add webupd8 Repository apt-key
+      apt_key: url=http://keyserver.ubuntu.com:11371/pks/lookup?op=get&search=0xC2518248EEA14886 state=present
+      when: ansible_distribution in [ 'Debian' ]
+
+    - name: Java | Add webupd8 Repository on Debian
+      apt_repository: repo='deb http://ppa.launchpad.net/webupd8team/java/ubuntu precise main' state=present
+      when: ansible_distribution in [ 'Debian' ]
+
+    - name: Java | Add webupd8 Repository (src) on Debian
+      apt_repository: repo='deb-src http://ppa.launchpad.net/webupd8team/java/ubuntu precise main' state=present
+      when: ansible_distribution in [ 'Debian' ]
+
+    - name: Java | Accept Oracle License
+      debconf: name="{{oracle_installer_key}}" question='shared/{{oracle_license_key}}' value='true' vtype='select'
+
+    - name: Java | Install Oracle Packages
+      apt: name={{item}} state=present update_cache=yes
+      with_items: oracle_packages
+
+    - name: Scala | Create scala lib dir
+      file: path={{scala_lib_path}} state=directory
+
+    - name: Scala | Clean existing Scala {{scala_version_name}} if it exists
+      file: path={{scala_lib_path_target}} state=absent
+
+    - name: Scala| Download Scala v{{scala_version}}
+      get_url: url={{scala_download_url}} 
+        dest=/tmp/{{scala_archive_file}}
+        force=no
+
+    - name: Scala | Unpack Scala
+      command: tar -xvf {{scala_archive_file}} chdir=/tmp/
+
+    - name: Scala | Move (by force) Scala to lib
+      command: mv /tmp/{{scala_version_name}} {{scala_lib_path_target}} chdir=/tmp/
+
+    - name: Scala | Link scala
+      command: ln -sf {{scala_lib_path_target}}/bin/scala {{scala_link_target}}
+
+    - name: Scala | Link scalac
+      command: ln -sf {{scala_lib_path_target}}/bin/scalac {{scala_link_target}}
+
+    - name: Scala | Link fsc
+      command: ln -sf {{scala_lib_path_target}}/bin/fsc {{scala_link_target}}
+
+    - name: Scala | Link sbaz
+      command: ln -sf {{scala_lib_path_target}}/bin/sbaz {{scala_link_target}}
+
+    - name: Scala | Link sbaz-setup
+      command: ln -sf {{scala_lib_path_target}}/bin/sbaz-setup {{scala_link_target}}
+
+    - name: Scala | Link scaladoc
+      command: ln -sf {{scala_lib_path_target}}/bin/scaladoc {{scala_link_target}}
+
+    - name: Scala | Link scalap
+      command: ln -sf {{scala_lib_path_target}}/bin/scalap {{scala_link_target}}
+

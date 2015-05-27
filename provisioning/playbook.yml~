@@ -1,0 +1,134 @@
+---
+- hosts: all
+  sudo: yes
+  vars: 
+    play_version: 2.2.3
+    env_paths:
+      - "/home/vagrant/frameworks/play-{{ play_version }}"
+  tasks:
+    - name: Update apt cache
+      apt: update_cache=yes
+
+    - name: Install PostgreSQL packages
+      apt: name={{item}}
+      with_items: 
+        - postgresql
+        - libpq-dev
+        - python-psycopg2
+
+    - name: ensure unzip is at the latest version
+      apt: pkg=unzip state=latest
+
+    - name: Download play framework
+      get_url: url="http://downloads.typesafe.com/play/{{ play_version }}/play-{{ play_version }}.zip" dest=/home/vagrant/frameworks/play-{{ play_version }}.zip
+
+    - name: Unzip play framework
+      raw: "if [ ! -d '/home/vagrant/frameworks/play-{{ play_version }}' ]; then unzip -q /home/vagrant/frameworks/play-{{ play_version }}.zip -d /home/vagrant/frameworks ; fi;"
+
+    - name: Update .bashrc with paths
+      template: src=templates/bashrc.j2 dest=/home/vagrant/.bashrc owner=vagrant mode=0644
+
+    - name: ensure vim is at the latest version
+      apt: pkg=vim state=latest
+
+    - name: ensure git is at the latest version
+      apt: pkg=git state=latest
+
+- hosts: all
+  sudo: yes
+  sudo_user: postgres
+  gather_facts: no
+
+  vars:
+    dbname: ringco
+    dbuser: ringco
+    dbpassword: ringco
+
+  tasks:
+  - name: ensure PostgreSQL database is created
+    postgresql_db: name={{dbname}}
+
+  - name: ensure user has access to PostgreSQL database
+    postgresql_user: db={{dbname}} name={{dbuser}} password={{dbpassword}} priv=ALL
+
+  - name: ensure user does not have unnecessary PostgreSQL privileges
+    postgresql_user: name={{dbuser}} role_attr_flags=NOSUPERUSER,NOCREATEDB
+
+  - name: postgresql remote config script
+    script: postgresql_remote_config.sh
+
+- hosts: all
+  sudo: yes
+  gather_facts: no
+
+  tasks: 
+  - name: install RabbitMQ
+    apt: name=rabbitmq-server
+
+  - name: run RabbitMQ config script
+    script: rabbitmq_management_config.sh
+
+  - name: add cassandra debian repository
+    apt_repository: repo='deb http://www.apache.org/dist/cassandra/debian 21x main' state=present
+
+  - name: add the key for the cassandra debian repo
+    apt_key: keyserver=pgp.mit.edu id=F758CE318D77295D
+
+  - name: add the other key for cassandra
+    apt_key: keyserver=pgp.mit.edu id=2B5C1B00
+
+  - name: install cassandra
+    apt: name=cassandra state=present update_cache=yes force=yes
+
+  - name: make sure cassandra is started
+    service: name=cassandra state=restarted
+
+- hosts: all
+  sudo: yes
+  gather_facts: no
+
+  vars:
+    oracle_packages:
+      - oracle-java8-installer
+      - oracle-java8-set-default
+
+    oracle_installer_key: oracle-java8-installer
+    oracle_license_key: accepted-oracle-license-v1-1
+
+  tasks: 
+    - name: Setup oracle java deb repo
+      apt_repository: repo="ppa:webupd8team/java" update_cache=yes
+      when: ansible_distribution in [ 'Ubuntu' ]
+
+    - name: Add webupd8 repo apt-key
+      apt_key: url=http://keyserver.ubuntu.com:11371/pks/lookup?op=get&search=0xC2518248EEA14886 state=present
+      when: ansible_distribution in [ 'Debian' ]
+
+    - name: Add webupd8 repository on Debian
+      apt_repository: repo='deb http://ppa.launchpad.net/webupd8team/java/ubuntu precise main' state=present
+      when: ansible_distribution in [ 'Debian' ]
+
+    - name: Add webupd8 repository (src) on Debian
+      apt_repository: repo='deb-src http://ppa.launchpad.net/webupd8team/java/ubuntu precise main' state=present
+      when: ansible_distribution in [ 'Debian' ]
+
+    - name: Accept Oracle license
+      debconf: name="{{oracle_installer_key}}" question='shared/{{oracle_license_key}}' value='true' vtype='select'
+
+    - name: Install Oracle packages
+      apt: name={{item}} state=present update_cache=yes
+      with_items: oracle_packages
+
+    - name: Node.js | Add the node.js PPA
+      apt_repository: repo=ppa:chris-lea/node.js
+      tags: nodejs
+
+    - name: Node.js | Install nodejs and npm
+      apt: pkg=nodejs update_cache=yes
+      tags: nodejs
+
+    - name: Node.js | Install packages
+      command: npm install -g {{item}}
+      with_items:
+        - grunt-cli
+        - bower

@@ -1,0 +1,13 @@
+#!/bin/sh -e
+
+echo "Starting Add SBT Sources Script"
+echo " "
+
+if [ ! -f /etc/apt/sources.list.d/sbt.list ]; then
+    echo "deb http://dl.bintray.com/sbt/debian /" | tee -a /etc/apt/sources.list.d/sbt.list
+    sudo apt-get update
+else
+    exit
+fi
+echo "Script complete!"
+
